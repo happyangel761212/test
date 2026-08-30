@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>리듬 헬스 — 매일의 리듬으로 만드는 건강</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#10231F;
+    --paper:#F1F3EF;
+    --paper-dim:#E4E8E1;
+    --sage:#3F6C56;
+    --sage-dim:#5C8770;
+    --coral:#E85C41;
+    --gold:#C9A227;
+    --max:1120px;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans KR', sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{
+    font-family:'Gowun Batang', serif;
+    font-weight:700;
+    margin:0;
+    letter-spacing:-0.01em;
+  }
+  p{margin:0;}
+  a{color:inherit;}
+  .wrap{max-width:var(--max); margin:0 auto; padding:0 32px;}
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+  .eyebrow::before{
+    content:"";
+    width:16px; height:1px;
+    background:currentColor;
+    display:inline-block;
+  }
+  .btn{
+    font-family:'IBM Plex Sans KR', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    border:none;
+    border-radius:999px;
+    padding:14px 26px;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    transition:transform .18s ease, box-shadow .18s ease;
+  }
+  .btn:hover{transform:translateY(-2px);}
+  .btn:focus-visible, a:focus-visible, input:focus-visible{
+    outline:2px solid var(--coral);
+    outline-offset:3px;
+  }
+  .btn-coral{background:var(--coral); color:#FFF7F2;}
+  .btn-ghost{background:transparent; color:var(--paper); border:1px solid rgba(241,243,239,0.4);}
+
+  /* ---------- HEADER ---------- */
+  header{
+    position:sticky; top:0; z-index:20;
+    background:rgba(16,35,31,0.92);
+    backdrop-filter:blur(6px);
+  }
+  header .wrap{
+    display:flex; align-items:center; justify-content:space-between;
+    padding-top:18px; padding-bottom:18px;
+  }
+  .logo{
+    font-family:'Gowun Batang', serif;
+    font-size:19px;
+    color:var(--paper);
+  }
+  .logo span{color:var(--coral);}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    background:var(--ink);
+    color:var(--paper);
+    padding:88px 0 0;
+    overflow:hidden;
+  }
+  .hero .eyebrow{color:var(--sage-dim);}
+  .hero h1{
+    font-size:clamp(34px, 6vw, 60px);
+    line-height:1.22;
+    margin:22px 0 24px;
+    color:var(--paper);
+  }
+  .hero h1 em{
+    color:var(--coral);
+    font-style:normal;
+  }
+  .hero p.sub{
+    max-width:520px;
+    font-size:17px;
+    color:#C9D2CC;
+    margin-bottom:36px;
+  }
+  .hero-actions{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:56px;}
+
+  .pulse-wrap{width:100%; line-height:0;}
+  .pulse-wrap svg{width:100%; display:block; height:auto;}
+  .pulse-line{
+    fill:none;
+    stroke:var(--coral);
+    stroke-width:2;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+    stroke-dasharray:900;
+    stroke-dashoffset:900;
+    animation:draw 3.2s ease-in-out infinite;
+  }
+  .pulse-line.dim{stroke:rgba(241,243,239,0.18); animation:none; stroke-dashoffset:0;}
+  @keyframes draw{
+    0%{stroke-dashoffset:900;}
+    55%{stroke-dashoffset:0;}
+    100%{stroke-dashoffset:-900;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pulse-line{animation:none; stroke-dashoffset:0;}
+  }
+
+  /* ---------- WHY ---------- */
+  .why{padding:96px 0;}
+  .why .grid{
+    display:grid;
+    grid-template-columns:1.1fr 0.9fr;
+    gap:64px;
+    align-items:start;
+  }
+  .why h2{font-size:clamp(26px,3.6vw,36px); line-height:1.35; margin:16px 0 22px;}
+  .why .body{font-size:16px; color:#33433C; max-width:46ch;}
+
+  .compare{border-top:1px solid var(--paper-dim);}
+  .compare-row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    padding:18px 0;
+    border-bottom:1px solid var(--paper-dim);
+    gap:20px;
+  }
+  .compare-row .old{color:#7C8A82; font-size:14px; text-decoration:line-through; text-decoration-color:#B9C2BC;}
+  .compare-row .new{color:var(--sage); font-size:15px; font-weight:500;}
+  .compare-head{
+    display:grid; grid-template-columns:1fr 1fr;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
+    color:#7C8A82;
+    padding-bottom:10px;
+  }
+
+  /* ---------- PILLARS ---------- */
+  .pillars{padding:88px 0; background:var(--paper-dim);}
+  .pillars h2{font-size:clamp(26px,3.6vw,36px); margin:16px 0 44px; max-width:16ch;}
+  .pillar-grid{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:1px;
+    background:rgba(16,35,31,0.1);
+    border:1px solid rgba(16,35,31,0.1);
+  }
+  .pillar-card{
+    background:var(--paper-dim);
+    padding:32px 26px 30px;
+    display:flex; flex-direction:column; gap:16px;
+  }
+  .pillar-card svg{width:30px; height:30px; stroke:var(--sage); fill:none; stroke-width:1.6;}
+  .pillar-card h3{font-size:18px; color:var(--ink);}
+  .pillar-card .tag{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--coral);
+  }
+  .pillar-card p{font-size:14px; color:#4B5A52;}
+
+  /* ---------- RHYTHM TIMELINE ---------- */
+  .rhythm{background:var(--ink); color:var(--paper); padding:96px 0;}
+  .rhythm .eyebrow{color:var(--coral);}
+  .rhythm h2{color:var(--paper); font-size:clamp(26px,3.6vw,36px); margin:16px 0 52px; max-width:18ch;}
+  .timeline{
+    position:relative;
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:0;
+  }
+  .timeline::before{
+    content:"";
+    position:absolute; top:7px; left:0; right:0; height:1px;
+    background:rgba(241,243,239,0.16);
+  }
+  .t-item{position:relative; padding-top:26px; padding-right:18px;}
+  .t-item::before{
+    content:"";
+    position:absolute; top:0; left:0;
+    width:9px; height:9px; border-radius:50%;
+    background:var(--coral);
+  }
+  .t-time{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px; color:var(--coral); display:block; margin-bottom:8px;
+  }
+  .t-desc{font-size:14px; color:#C9D2CC; line-height:1.5;}
+
+  /* ---------- CTA ---------- */
+  .cta{padding:100px 0;}
+  .cta-box{
+    display:grid; grid-template-columns:1.1fr 0.9fr; gap:48px;
+    align-items:center;
+  }
+  .cta h2{font-size:clamp(28px,4vw,42px); margin-bottom:16px;}
+  .cta p{color:#33433C; max-width:44ch; font-size:16px;}
+  form{display:flex; gap:10px; margin-top:26px; flex-wrap:wrap;}
+  input[type=email]{
+    flex:1; min-width:200px;
+    padding:14px 16px;
+    border:1px solid #C6CEC7;
+    border-radius:10px;
+    font-family:'IBM Plex Sans KR', sans-serif;
+    font-size:15px;
+    background:#FFFFFF;
+    color:var(--ink);
+  }
+  input[type=email]::placeholder{color:#8C978E;}
+  .btn-sage{background:var(--sage); color:#F1F3EF;}
+  .disclaimer{font-size:12.5px; color:#8C978E; margin-top:14px;}
+
+  /* ---------- FOOTER ---------- */
+  footer{background:var(--ink); color:#9AA6A0; padding:34px 0;}
+  footer .wrap{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;}
+  footer .logo{color:#C9D2CC;}
+  footer small{font-size:12.5px;}
+
+  @media (max-width: 860px){
+    .why .grid{grid-template-columns:1fr; gap:40px;}
+    .pillar-grid{grid-template-columns:1fr 1fr;}
+    .timeline{grid-template-columns:1fr; gap:26px;}
+    .timeline::before{display:none;}
+    .cta-box{grid-template-columns:1fr;}
+    .compare-row, .compare-head{grid-template-columns:1fr;}
+    .compare-row .new{margin-top:4px;}
+  }
+  @media (max-width: 520px){
+    .wrap{padding:0 22px;}
+    .pillar-grid{grid-template-columns:1fr;}
+    .hero{padding-top:72px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">리듬<span>·</span>헬스</div>
+    <a href="#start" class="btn btn-ghost" style="padding:10px 18px; font-size:13px;">루틴 시작하기</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">DAILY RHYTHM, NOT WILLPOWER</span>
+    <h1>몸이 보내는 신호에,<br><em>매일</em> 답하기</h1>
+    <p class="sub">거창한 결심 대신, 작지만 꾸준히 반복되는 리듬을 만드는 건강 습관 가이드입니다. 수면·움직임·영양·마음, 네 가지 리듬으로 하루를 다시 짭니다.</p>
+    <div class="hero-actions">
+      <a href="#rhythm" class="btn btn-coral">오늘의 루틴 보기</a>
+      <a href="#pillars" class="btn btn-ghost">네 가지 축 알아보기</a>
+    </div>
+  </div>
+  <div class="pulse-wrap">
+    <svg viewBox="0 0 1200 90" preserveAspectRatio="none" aria-hidden="true">
+      <path class="pulse-line dim" d="M0,60 L160,60 L200,60 L225,20 L250,80 L275,45 L300,60 L1200,60"/>
+      <path class="pulse-line" d="M0,60 L160,60 L200,60 L225,20 L250,80 L275,45 L300,60 L1200,60"/>
+    </svg>
+  </div>
+</section>
+
+<section class="why">
+  <div class="wrap">
+    <div class="grid">
+      <div>
+        <span class="eyebrow" style="color:var(--sage);">WHY RHYTHM</span>
+        <h2>건강은 극단이 아니라<br>반복에서 옵니다</h2>
+        <p class="body">하루의 완벽한 노력보다, 매일 반복되는 작은 신호가 몸의 리듬을 만듭니다. 리듬 헬스는 수면·움직임·영양·마음을 가장 작은 단위로 쪼개어, 누구나 오늘부터 이어갈 수 있는 습관으로 설계합니다.</p>
+      </div>
+      <div class="compare">
+        <div class="compare-head"><span>예전 방식</span><span>리듬 방식</span></div>
+        <div class="compare-row">
+          <span class="old">완벽한 계획을 세운다</span>
+          <span class="new">10분짜리 루틴부터 시작한다</span>
+        </div>
+        <div class="compare-row">
+          <span class="old">실패하면 처음부터 다시</span>
+          <span class="new">리듬이 끊기면 다음 박자로</span>
+        </div>
+        <div class="compare-row">
+          <span class="old">숫자와 기록에 집중한다</span>
+          <span class="new">몸의 신호에 귀 기울인다</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pillars" id="pillars">
+  <div class="wrap">
+    <span class="eyebrow" style="color:var(--coral);">FOUR RHYTHMS</span>
+    <h2>몸의 리듬을 이루는<br>네 가지 축</h2>
+    <div class="pillar-grid">
+
+      <div class="pillar-card">
+        <svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="tag">Sleep</span>
+        <h3>수면</h3>
+        <p>밤 11시, 화면을 끄는 리듬. 일정한 시각에 잠들고 깨는 습관이 하루 전체의 컨디션을 결정합니다.</p>
+      </div>
+
+      <div class="pillar-card">
+        <svg viewBox="0 0 24 24"><path d="M5 20l4-9 3 5 3-8 4 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="tag">Movement</span>
+        <h3>움직임</h3>
+        <p>10분이면 충분한 움직임. 격렬한 운동보다 매일 같은 시간의 반복이 더 오래갑니다.</p>
+      </div>
+
+      <div class="pillar-card">
+        <svg viewBox="0 0 24 24"><path d="M6 3v6a3 3 0 0 0 6 0V3M18 3v18M6 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="tag">Nutrition</span>
+        <h3>영양</h3>
+        <p>식사 시간을 지키는 것부터. 무엇을 먹는지보다 언제, 얼마나 규칙적으로 먹는지가 먼저입니다.</p>
+      </div>
+
+      <div class="pillar-card">
+        <svg viewBox="0 0 24 24"><path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="tag">Mind</span>
+        <h3>마음</h3>
+        <p>하루 3분, 숨 고르기. 짧은 호흡과 정리의 시간이 스트레스가 쌓이지 않게 합니다.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="rhythm" id="rhythm">
+  <div class="wrap">
+    <span class="eyebrow">A SAMPLE DAY</span>
+    <h2>리듬 헬스가 그리는 하루</h2>
+    <div class="timeline">
+      <div class="t-item"><span class="t-time">06:30</span><span class="t-desc">기상 후 물 한 잔과 가벼운 스트레칭</span></div>
+      <div class="t-item"><span class="t-time">08:00</span><span class="t-desc">정해진 시간에 아침 식사</span></div>
+      <div class="t-item"><span class="t-time">12:30</span><span class="t-desc">20분 산책을 겸한 점심</span></div>
+      <div class="t-item"><span class="t-time">15:00</span><span class="t-desc">짧은 호흡 정리, 3분</span></div>
+      <div class="t-item"><span class="t-time">19:00</span><span class="t-desc">가벼운 저녁과 화면 없는 시간</span></div>
+      <div class="t-item"><span class="t-time">22:30</span><span class="t-desc">같은 시각에 잠자리 준비</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta" id="start">
+  <div class="wrap">
+    <div class="cta-box">
+      <div>
+        <h2>당신의 리듬은<br>무엇인가요?</h2>
+        <p>이메일을 남기면, 매주 하나의 작은 리듬 루틴을 보내드립니다. 부담 없이 시작할 수 있는 크기로 준비했습니다.</p>
+      </div>
+      <div>
+        <form onsubmit="return false;">
+          <input type="email" placeholder="이메일 주소를 입력하세요" required>
+          <button type="submit" class="btn btn-sage">루틴 받기</button>
+        </form>
+        <p class="disclaimer">본 콘텐츠는 일반적인 건강 정보이며, 의학적 진단이나 처방을 대신하지 않습니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="logo">리듬·헬스</div>
+    <small>© 2026 리듬 헬스. 매일의 작은 리듬을 응원합니다.</small>
+  </div>
+</footer>
+
+</body>
+</html>
