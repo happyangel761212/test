@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사업비 집행 현황 계산기</title>
+<style>
+  :root { --bg:#f4f6fa; --card:#fff; --line:#dde3ec; --text:#1f2937; --muted:#6b7280; --blue:#2563eb; --ok:#16a34a; --warn:#f59e0b; --over:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:16px 20px; background:#1e3a8a; color:#fff; }
+  header h1 { margin:0; font-size:20px; }
+  .tools { display:flex; gap:8px; flex-wrap:wrap; }
+  button { border:0; border-radius:8px; padding:8px 14px; font-size:14px; cursor:pointer; background:#fff; color:#1e3a8a; font-weight:bold; }
+  button:hover { opacity:.85; }
+  main { max-width:1000px; margin:20px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  label { font-weight:bold; margin-right:8px; }
+  input { width:150px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:15px; text-align:right; }
+  input:focus { outline:2px solid var(--blue); }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { padding:10px 8px; border-bottom:1px solid var(--line); text-align:right; vertical-align:middle; }
+  th { background:#eef2f9; text-align:center; }
+  td:first-child { text-align:center; font-weight:bold; }
+  tfoot td { font-weight:bold; background:#f8fafc; }
+  .bar { position:relative; height:20px; background:#e5e7eb; border-radius:10px; overflow:hidden; min-width:120px; }
+  .bar span { display:block; height:100%; background:var(--ok); transition:width .3s; }
+  .bar b { position:absolute; inset:0; font-size:12px; line-height:20px; text-align:center; color:#111; }
+  .warn .bar span { background:var(--warn); } .warn td.rate { color:#b45309; }
+  .over .bar span { background:var(--over); } .over td.rate, .over td.rem { color:var(--over); }
+  .over { background:#fef2f2; }
+  .msgs div { padding:10px 14px; border-radius:8px; margin-top:8px; font-size:14px; }
+  .m-over { background:#fee2e2; color:#991b1b; border-left:5px solid var(--over); }
+  .m-warn { background:#fef3c7; color:#92400e; border-left:5px solid var(--warn); }
+  .m-mis { background:#e0e7ff; color:#3730a3; border-left:5px solid var(--blue); }
+  .m-ok { background:#dcfce7; color:#166534; border-left:5px solid var(--ok); }
+  .legend { font-size:13px; color:var(--muted); margin-top:10px; }
+  .saved { font-size:12px; color:var(--muted); margin-left:10px; }
+  @media (max-width:700px){ table, input { font-size:13px; } input { width:100px; } .bar { min-width:70px; } }
+  @media print { header .tools, .noprint { display:none !important; } body { background:#fff; } .card { border:1px solid #999; } header { background:#fff; color:#000; border-bottom:2px solid #000; } * { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 사업비 집행 현황 계산기</h1>
+  <div class="tools">
+    <button id="btnCsv" style="display:none">💾 결과 저장</button>
+    <button id="btnApp">📥 앱 파일 받기</button>
+    <button id="btnPrint">🖨️ 인쇄</button>
+  </div>
+</header>
+<main>
+  <div class="card">
+    <label for="total">총예산(원)</label>
+    <input id="total" inputmode="numeric" placeholder="0">
+    <span class="saved" id="saved"></span>
+    <button class="noprint" id="btnReset" style="float:right;background:#fee2e2;color:#991b1b">초기화</button>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>비목</th><th>예산액(원)</th><th>집행액(원)</th><th>잔액(원)</th><th>집행률</th><th>집행 막대</th></tr></thead>
+      <tbody id="rows"></tbody>
+      <tfoot><tr><td>합계</td><td id="sB">0</td><td id="sS">0</td><td id="sR">0</td><td id="sP">0.0%</td><td><div class="bar"><span id="sBar" style="width:0"></span><b id="sBarT"></b></div></td></tr></tfoot>
+    </table>
+    <div class="legend">■ 초록: 정상 · <span style="color:#b45309">■ 주황: 집행률 80% 이상</span> · <span style="color:#dc2626">■ 빨강: 예산 초과</span></div>
+  </div>
+  <div class="card msgs" id="msgs"></div>
+</main>
+<script>
+const CATS = ["강사료", "운영비", "홍보비", "예비비"];
+const KEY = "budget-exec-v1";
+const $ = id => document.getElementById(id);
+const fmt = n => Math.round(n).toLocaleString("ko-KR");
+const num = s => Number(String(s || "").replace(/[^\d.-]/g, "")) || 0;
+
+$("rows").innerHTML = CATS.map((c, i) => `
+  <tr id="r${i}">
+    <td>${c}</td>
+    <td><input class="money" id="b${i}" inputmode="numeric" placeholder="0"></td>
+    <td><input class="money" id="s${i}" inputmode="numeric" placeholder="0"></td>
+    <td class="rem" id="rm${i}">0</td>
+    <td class="rate" id="rt${i}">0.0%</td>
+    <td><div class="bar"><span id="br${i}" style="width:0"></span><b id="bt${i}"></b></div></td>
+  </tr>`).join("");
+
+function formatInput(el) {
+  const pos = el.value.length - el.selectionStart;
+  const v = el.value.replace(/[^\d]/g, "");
+  el.value = v ? Number(v).toLocaleString("ko-KR") : "";
+  if (document.activeElement === el) { const p = Math.max(0, el.value.length - pos); el.setSelectionRange(p, p); }
+}
+
+function getData() {
+  return { total: num($("total").value), items: CATS.map((c, i) => ({ name: c, budget: num($("b" + i).value), spent: num($("s" + i).value) })) };
+}
+
+function calc() {
+  const d = getData(), msgs = [];
+  let sb = 0, ss = 0;
+  d.items.forEach((it, i) => {
+    const rem = it.budget - it.spent;
+    const rate = it.budget > 0 ? it.spent / it.budget * 100 : (it.spent > 0 ? 100 : 0);
+    sb += it.budget; ss += it.spent;
+    const row = $("r" + i);
+    row.classList.remove("warn", "over");
+    if (it.spent > it.budget && it.spent > 0) {
+      row.classList.add("over");
+      msgs.push(["m-over", `⛔ [${it.name}] 집행액이 예산을 ${fmt(it.spent - it.budget)}원 초과했습니다.`]);
+    } else if (it.budget > 0 && rate >= 80) {
+      row.classList.add("warn");
+      msgs.push(["m-warn", `⚠️ [${it.name}] 집행률이 ${rate.toFixed(1)}%로 80% 이상입니다. 잔액 ${fmt(rem)}원`]);
+    }
+    $("rm" + i).textContent = fmt(rem);
+    $("rt" + i).textContent = (it.budget > 0 ? rate.toFixed(1) : it.spent > 0 ? "초과" : "0.0") + (it.budget > 0 ? "%" : it.spent > 0 ? "" : "%");
+    $("br" + i).style.width = Math.min(rate, 100) + "%";
+    $("bt" + i).textContent = it.budget > 0 || it.spent > 0 ? rate.toFixed(1) + "%" : "";
+  });
+  const sr = sb > 0 ? ss / sb * 100 : 0;
+  $("sB").textContent = fmt(sb); $("sS").textContent = fmt(ss); $("sR").textContent = fmt(sb - ss);
+  $("sP").textContent = sr.toFixed(1) + "%";
+  $("sBar").style.width = Math.min(sr, 100) + "%";
+  $("sBar").style.background = ss > sb ? "var(--over)" : sr >= 80 ? "var(--warn)" : "var(--ok)";
+  $("sBarT").textContent = sb > 0 ? sr.toFixed(1) + "%" : "";
+  if (d.total > 0 && d.total !== sb) {
+    msgs.unshift(["m-mis", `ℹ️ 합계 불일치: 비목 예산 합계 ${fmt(sb)}원 ≠ 총예산 ${fmt(d.total)}원 (차이 ${fmt(Math.abs(d.total - sb))}원 ${d.total > sb ? "부족" : "초과"})`]);
+  }
+  if (!msgs.length) msgs.push(["m-ok", sb > 0 ? "✅ 모든 비목이 정상 범위에서 집행되고 있습니다." : "예산액과 집행액을 입력하면 자동으로 계산됩니다."]);
+  $("msgs").innerHTML = msgs.map(m => `<div class="${m[0]}">${m[1]}</div>`).join("");
+  $("btnCsv").style.display = sb > 0 || ss > 0 ? "" : "none";
+  return d;
+}
+
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(getData()));
+    $("saved").textContent = "자동 저장됨 " + new Date().toLocaleTimeString("ko-KR");
+  } catch (e) { $("saved").textContent = "자동 저장 실패(브라우저 저장소 사용 불가)"; }
+}
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (!d) return;
+    if (d.total) $("total").value = fmt(d.total);
+    (d.items || []).forEach((it, i) => {
+      if (i >= CATS.length) return;
+      if (it.budget) $("b" + i).value = fmt(it.budget);
+      if (it.spent) $("s" + i).value = fmt(it.spent);
+    });
+  } catch (e) { /* 저장 데이터 없음 */ }
+}
+
+document.querySelectorAll("input").forEach(el => el.addEventListener("input", () => { formatInput(el); calc(); save(); }));
+
+$("btnPrint").onclick = () => window.print();
+
+$("btnReset").onclick = () => {
+  if (!confirm("입력한 내용을 모두 지울까요?")) return;
+  document.querySelectorAll("input").forEach(el => el.value = "");
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  $("saved").textContent = ""; calc();
+};
+
+function download(name, content, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+$("btnApp").onclick = () => {
+  const clone = document.documentElement.cloneNode(true);
+  clone.querySelectorAll("input").forEach(el => el.removeAttribute("value"));
+  download("index.html", "<!DOCTYPE html>\n" + clone.outerHTML, "text/html;charset=utf-8");
+};
+
+$("btnCsv").onclick = () => {
+  const d = calc(), q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = [["비목", "예산액", "집행액", "잔액", "집행률(%)", "상태"].map(q).join(",")];
+  let sb = 0, ss = 0;
+  d.items.forEach(it => {
+    sb += it.budget; ss += it.spent;
+    const rate = it.budget > 0 ? (it.spent / it.budget * 100).toFixed(1) : "";
+    const st = it.spent > it.budget && it.spent > 0 ? "예산 초과" : it.budget > 0 && it.spent / it.budget >= 0.8 ? "주의(80% 이상)" : "정상";
+    lines.push([it.name, it.budget, it.spent, it.budget - it.spent, rate, st].map(q).join(","));
+  });
+  lines.push(["합계", sb, ss, sb - ss, sb > 0 ? (ss / sb * 100).toFixed(1) : "", ""].map(q).join(","));
+  lines.push(["총예산", d.total, "", "", "", d.total > 0 && d.total !== sb ? "합계 불일치" : ""].map(q).join(","));
+  const today = new Date().toISOString().slice(0, 10);
+  download(`사업비_집행현황_${today}.csv`, "﻿" + lines.join("\r\n"), "text/csv;charset=utf-8");
+};
+
+load();
+calc();
+</script>
+</body>
+</html>
