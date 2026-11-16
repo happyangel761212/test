@@ -23,6 +23,7 @@ import math
 import os
 import sys
 import time
+import unicodedata
 
 import numpy as np
 
@@ -51,6 +52,10 @@ FLASH         = (255, 255, 255)  # 꼭대기 8방향 번쩍임: 흰색
 RED           = (232, 32, 45)    # 장식 볼: 빨강
 GOLD          = (255, 192, 45)   # 장식 볼: 금색
 SILVER        = (200, 212, 230)  # 장식 볼: 은색
+BALL_GREEN    = (40, 225, 110)   # 장식 볼: 초록 (트리보다 밝은 에메랄드)
+BALL_BLUE     = (60, 130, 255)   # 장식 볼: 파랑
+BALL_PURPLE   = (180, 90, 240)   # 장식 볼: 보라
+BALL_PINK     = (255, 110, 190)  # 장식 볼: 분홍
 
 WARM_WHITE    = (255, 222, 165)  # 전구: 따뜻한 흰색
 BULB_RED      = (255, 60, 60)    # 전구: 빨강
@@ -68,6 +73,7 @@ GIFT_GOLD     = (240, 185, 50)   # 선물 상자: 금색
 GIFT_BLUE     = (55, 105, 235)   # 선물 상자: 파랑
 
 SNOW_FLAKE    = (240, 245, 255)  # 내리는 눈
+TEXT_GOLD     = (255, 200, 60)   # 트리 아래 글자: 금색
 
 # =====================================================================
 #  개수·크기 — 「하트 더 많이」, 「전구 더 많이」 같은 건 여기 숫자를 바꿔요
@@ -76,10 +82,14 @@ NUM_STARS       = 500    # 배경 별 개수
 NUM_BALLS       = 34     # 장식 볼 개수
 NUM_LIGHTS      = 170    # 전구 개수
 LIGHT_TURNS     = 5.5    # 전구 줄이 트리를 감는 바퀴 수
-NUM_HEARTS      = 5      # 트리에 달리는 하트 개수
-NUM_SNOW        = 170    # 내리는 눈송이 개수
+NUM_HEARTS      = 100    # 트리에 달리는 하트 개수
+NUM_SNOW        = 680    # 내리는 눈송이 개수
+SNOW_SPEED_MIN  = 1.0    # 눈 떨어지는 속도(1초에 몇 줄) — 작을수록 천천히
+SNOW_SPEED_MAX  = 2.8
 SNOW_HEART_RATE = 0.06   # 눈 사이 분홍 하트 비율 (0.06 = 6%)
-BALL_COLORS     = [RED, GOLD, SILVER]                       # 볼 색 순서(번갈아)
+BALL_COLORS     = [BALL_GREEN, SILVER, RED, GOLD, BALL_BLUE, BALL_PURPLE, BALL_PINK]  # 볼 색(골고루 섞임)
+MESSAGE         = "MERRY CHRISTMAS 천사쌤"   # 트리 아래 글자
+MESSAGE_COLOR   = TEXT_GOLD
 LIGHT_COLORS    = [WARM_WHITE, BULB_RED, BULB_GOLD, BULB_GREEN]  # 전구 색 순서
 
 # 선물 상자: (트리 중심에서 거리, 놓이는 각도, 가로, 세로(깊이), 높이, 상자색, 리본색)
@@ -106,7 +116,7 @@ TILT = math.radians(14)   # 카메라가 위에서 내려다보는 각도
 KY = 11.0                 # 세로 확대 (줄 / 단위길이)
 KX = KY * 2.0             # 글자 칸은 세로로 길쭉해서 가로를 2배로
 YC = 1.42                 # 화면 가운데에 오는 높이
-V0 = H * 0.5 + 3.0
+V0 = H * 0.5 + 2.0
 
 # =====================================================================
 #  생기는 순서(초) — 전체 약 13.5초 + 3초 감상 후 처음부터
@@ -120,6 +130,7 @@ T_STAR   = (8.6, 9.3)     # 6. 꼭대기 별
 T_HEARTS = (9.3, 10.5)    # 7. 하트
 T_GIFTS  = (10.5, 12.3)   # 8. 선물 상자
 T_SNOW   = 12.1           # 9. 눈 내리기 시작
+T_TEXT   = 12.3           #    트리 아래 글자가 한 글자씩
 T_CHASE  = 13.4           # 10. 전구 빛 달리기 시작
 T_LOOP   = 16.6           # 이 시간이 지나면 처음부터 다시
 
@@ -338,6 +349,7 @@ _bth = np.array([front_theta(b, o) for b, o in zip(BALL_BIRTH, _off)])
 _br = r_env(_by) + 0.035
 BALL_CENTER = np.stack([_br * np.cos(_bth), _by, _br * np.sin(_bth)], 1)
 BALL_COLOR = np.array([rgb(BALL_COLORS[i % len(BALL_COLORS)]) for i in range(NUM_BALLS)])
+BALL_COLOR = BALL_COLOR[RNG.permutation(NUM_BALLS)]   # 색 개수는 고르게, 자리는 섞어서
 
 # ---------- 전구 ----------
 _s = np.linspace(0, 1, NUM_LIGHTS)
@@ -351,12 +363,13 @@ LIGHT_FREQ = RNG.uniform(2.0, 6.0, NUM_LIGHTS)
 LIGHT_PHASE = RNG.uniform(0, 2 * math.pi, NUM_LIGHTS)
 
 # ---------- 하트 ----------
-_hy = np.linspace(0.85, 2.75, NUM_HEARTS) if NUM_HEARTS > 1 else np.array([1.8])
+_hy = exposed_heights(NUM_HEARTS, spread=0.85)
 HEART_BIRTH = T_HEARTS[0] + (T_HEARTS[1] - T_HEARTS[0] - 0.2) * np.arange(NUM_HEARTS) / max(1, NUM_HEARTS - 1)
-_hoff = np.array([(-1) ** i * (0.25 + 0.45 * ((i * 0.37) % 1)) for i in range(NUM_HEARTS)])
+_hoff = ((np.arange(NUM_HEARTS) * 0.618034) % 1.0 * 2 - 1) * 1.45
 _hth = np.array([front_theta(b, o) for b, o in zip(HEART_BIRTH, _hoff)])
 _hr = r_env(_hy) + 0.06
 HEART_POS = np.stack([_hr * np.cos(_hth), _hy, _hr * np.sin(_hth)], 1)
+HEART_GLOW = min(1.0, (8.0 / max(1, NUM_HEARTS)) ** 0.5)   # 하트가 많으면 분홍빛 번짐을 줄임
 
 # ---------- 선물 ----------
 G_P, G_N, G_C, G_ID, GIFT_BIRTH, GIFT_H = build_gifts()
@@ -714,7 +727,7 @@ def render(t):
                     for du, dv in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                         uu, vv = hu[k_] + du, hvv[k_] + dv
                         if 0 <= uu < W and 0 <= vv < H:
-                            G[vv * W + uu] += rgb(PINK) * (0.12 + 0.25 * beat + pop * 0.4)
+                            G[vv * W + uu] += rgb(PINK) * (0.12 + 0.25 * beat + pop * 0.4) * HEART_GLOW
 
     # ---------- 합치기 ----------
     bg_ch, bg_col = draw_background(t)
@@ -756,7 +769,7 @@ def render(t):
         sx = SNOW_X0 + SNOW_AMP * np.sin(st * SNOW_FREQ + SNOW_PHASE)
         ri = np.floor(sy).astype(int)
         ci = np.floor(sx).astype(int) % W
-        ok = (ri >= 0) & (ri < H)
+        ok = (ri >= 0) & (ri < H) & (st >= SNOW_APPEAR)
         for i in np.where(ok)[0]:
             r, c = ri[i], ci[i]
             if SNOW_BEHIND[i] and lit[r, c]:
@@ -766,22 +779,45 @@ def render(t):
                 col[r, c] = rgb(PINK) * 0.85 * fade
             else:
                 chars[r, c] = SNOW_CHARS[i]
-                col[r, c] = rgb(SNOW_FLAKE) * SNOW_BRIGHT[i] * fade
+                col[r, c] = rgb(SNOW_FLAKE) * SNOW_BRIGHT[i] * fade * min(1.0, (st - SNOW_APPEAR[i]) / 0.6)
+
+    # 트리 아래 금색 글자 (한글은 2칸 차지)
+    if t >= T_TEXT:
+        cells = []
+        for chr_ in MESSAGE:
+            cells.append(chr_)
+            if unicodedata.east_asian_width(chr_) in ("W", "F"):
+                cells.append("")
+        c0 = (W - len(cells)) // 2
+        n_on = int((t - T_TEXT) / 0.06) + 1
+        shine = (t - T_TEXT) * 14.0 % (len(cells) + 16) - 8
+        k = 0
+        for j, chr_ in enumerate(cells):
+            if chr_ != "":
+                k += 1
+            if k > n_on or not (0 <= c0 + j < W):
+                continue
+            w_ = math.exp(-((j - shine) / 2.2) ** 2) * 0.65          # 반짝이는 빛이 지나감
+            gc = rgb(MESSAGE_COLOR) * (0.85 + 0.15 * math.sin(t * 3 + j * 0.5))
+            chars[H - 1, c0 + j] = chr_
+            col[H - 1, c0 + j] = np.clip((gc * (1 - w_) + w_) * fade, 0, 1)
 
     return chars, np.clip(col * 255, 0, 255).astype(np.uint8)
 
 
 # ---------- 내리는 눈 준비 ----------
 SNOW_X0 = RNG.uniform(0, W, NUM_SNOW)
-SNOW_Y0 = -RNG.uniform(0, H * 1.1, NUM_SNOW)
-SNOW_SPEED = RNG.uniform(2.5, 6.5, NUM_SNOW)
+SNOW_Y0 = RNG.uniform(-H * 0.3, H, NUM_SNOW)
+SNOW_SPEED = RNG.uniform(SNOW_SPEED_MIN, SNOW_SPEED_MAX, NUM_SNOW)
 SNOW_AMP = RNG.uniform(0.5, 1.8, NUM_SNOW)
 SNOW_FREQ = RNG.uniform(0.8, 2.2, NUM_SNOW)
 SNOW_PHASE = RNG.uniform(0, 2 * math.pi, NUM_SNOW)
 SNOW_BEHIND = RNG.random(NUM_SNOW) < 0.4
 SNOW_HEART = RNG.random(NUM_SNOW) < SNOW_HEART_RATE
-SNOW_CHARS = np.where(SNOW_SPEED > 5.2, "*", np.where(SNOW_SPEED > 3.8, "+", "."))
-SNOW_BRIGHT = 0.55 + 0.45 * (SNOW_SPEED - 2.5) / 4.0
+_sq = (SNOW_SPEED - SNOW_SPEED_MIN) / max(1e-6, SNOW_SPEED_MAX - SNOW_SPEED_MIN)
+SNOW_CHARS = np.where(_sq > 0.7, "*", np.where(_sq > 0.4, "+", "."))
+SNOW_BRIGHT = 0.55 + 0.45 * _sq
+SNOW_APPEAR = RNG.uniform(0, 1.5, NUM_SNOW)   # 눈송이마다 나타나는 시각을 살짝 다르게
 
 
 # =====================================================================
@@ -798,6 +834,8 @@ def to_ansi(chars, cols, home=True):
         rc, rch = cl[r], chl[r]
         for c in range(W):
             s = rch[c]
+            if s == "":
+                continue
             if s == " ":
                 parts.append(" ")
                 continue
