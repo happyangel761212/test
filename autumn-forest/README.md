@@ -4,7 +4,9 @@
 [JDhruv14/line-art-animation](https://github.com/JDhruv14/line-art-animation) (MIT)의 라이브러리(`lib/`)와 스타일 규칙을 따릅니다.
 
 ## 바로 보기
-`dist/autumn-forest.html` 을 브라우저로 열면 됩니다 (단일 파일, 외부 의존성 없음).
+- `dist/autumn-forest.html` — 가로 2:1 (단일 파일, 외부 의존성 없음)
+- `dist/autumn-forest-9x16.html` — 세로 9:16 (쇼츠·릴스 구도)
+- `dist/autumn-forest-9x16.mp4` — 세로 영상 1080×1920, 30fps, 24초 (오후 → 노을 → 저녁, 기러기·바람·나무 흔들기 포함)
 
 ## 장면 구성
 - 앞줄/뒷줄의 은행나무(불꽃꼴 노란 수관)와 단풍나무(둥근 지붕꼴 붉은·주황 수관), 왼쪽 위 단풍 가지
@@ -30,4 +32,11 @@
 ```bash
 npm i esbuild            # 아무 폴더에나
 node build.mjs <esbuild가 설치된 폴더>   # → dist/autumn-forest.html
+```
+
+## 9:16 영상 다시 만들기
+```bash
+node build.mjs <esbuild 폴더>
+(echo '<!doctype html><html><head><meta charset="utf-8"></head><body>'; cat dist/autumn-forest-9x16.html; echo '</body></html>') > page-9x16.html
+node record-9x16.cjs dist/autumn-forest-9x16.mp4 page-9x16.html   # playwright + ffmpeg 필요
 ```

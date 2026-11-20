@@ -11,7 +11,13 @@ import { palette, applyPalette, nightTint, rgb, mix, toRGB, type Palette } from 
 declare global { interface Element { setAttribute(qualifiedName: string, value: string | number): void } }
 
 // ------------------------------------------------------------------ 장면 상수
-const W = 960, H = 480;
+declare const __PORTRAIT__: boolean;
+const PORTRAIT = typeof __PORTRAIT__ !== 'undefined' && __PORTRAIT__;
+const W = PORTRAIT ? 540 : 960, H = PORTRAIT ? 960 : 480;
+const GY = PORTRAIT ? 380 : 0;   // 세로 화면: 땅 전체를 아래로 내리고 하늘을 넓힌다
+const HB = H - GY;               // 땅 좌표계에서 화면 맨 아래
+const FX = (W - 960) / 2;        // 먼 산(960 폭으로 그림)을 가운데 맞춤
+const QS = new URLSearchParams(location.search);
 const SP = 0.8;              // scene pen = PEN × figure scale
 const FS = 0.5;              // figure scale
 const HILL = 322;            // 뒷줄 나무 밑동
@@ -52,7 +58,7 @@ const waterGrad = el('linearGradient', { id: 'af-water', x1: 0, y1: 0, x2: 0, y2
 const w0 = el('stop', { offset: 0 }, waterGrad), w1 = el('stop', { offset: 1 }, waterGrad);
 
 const skyG = el('g', {}, svg);
-const scene = el('g', { filter: ink.filter }, svg);
+const scene = el('g', { filter: ink.filter, transform: `translate(0 ${GY})` }, svg);
 const L = {
   backTrees: el('g', { opacity: 0.62 }, scene),
   ground: el('g', {}, scene),
@@ -64,13 +70,17 @@ const L = {
   water: el('g', {}, scene),
   floatLeaves: el('g', {}, scene),
   near: el('g', {}, scene),
-  branch: el('g', {}, scene),
   fall: el('g', { 'pointer-events': 'none' }, scene),
+  branch: null as unknown as SVGGElement,
 };
-const glow = el('g', { style: 'mix-blend-mode:screen', 'pointer-events': 'none' }, svg);
+const topG = el('g', { filter: ink.filter }, svg);
+const BS = PORTRAIT ? 1.65 : 1;
+L.branch = el('g', { transform: `scale(${BS})` }, topG) as any;
+const skyGlow = el('g', { style: 'mix-blend-mode:screen', 'pointer-events': 'none' }, svg);
+const glow = el('g', { style: 'mix-blend-mode:screen', 'pointer-events': 'none', transform: `translate(0 ${GY})` }, svg);
 
 const wind = pointerWind(svg, 0.28);
-let tau = 0.6;
+let tau = QS.has('tau') ? Number(QS.get('tau')) : 0.6;
 
 // ------------------------------------------------------------------ 잎 모양 (단위 크기, 꼭지가 +y)
 const MAPLE = (() => {
@@ -100,12 +110,13 @@ const GINKGO_COLS = ['--g1', '--g2', '--g3'];
 
 // ------------------------------------------------------------------ 하늘
 const SUN_SPAN = [0.225, 0.55], MOON_SPAN = [0.775, 0.45];
-const sunArc = (u: number): Vec => [40 + 880 * u, 300 - 236 * Math.sin(Math.PI * u)];
-const moonArc = (u: number): Vec => [60 + 840 * u, 290 - 205 * Math.sin(Math.PI * u)];
+const SX0 = W * 0.042, SXW = W * 0.916, MX0 = W * 0.062, MXW = W * 0.876;
+const sunArc = (u: number): Vec => [SX0 + SXW * u, 300 + GY - (236 + GY * 0.72) * Math.sin(Math.PI * u)];
+const moonArc = (u: number): Vec => [MX0 + MXW * u, 290 + GY - (205 + GY * 0.72) * Math.sin(Math.PI * u)];
 
-el('rect', { x: -20, y: -20, width: W + 40, height: 520, fill: 'url(#af-sky)' }, skyG);
+el('rect', { x: -20, y: -20, width: W + 40, height: H + 40, fill: 'url(#af-sky)' }, skyG);
 const starG = el('g', {}, skyG);
-const stars = Array.from({ length: 80 }, () => ({ n: el('circle', { cx: f(srnd(0, W)), cy: f(srnd(6, 230)), r: f(srnd(0.35, 1.05)), fill: '#f5efda' }, starG), ph: srnd(0, 6), sp: srnd(0.6, 2.4) }));
+const stars = Array.from({ length: 80 }, () => ({ n: el('circle', { cx: f(srnd(0, W)), cy: f(srnd(6, 230 + GY * 0.85)), r: f(srnd(0.35, 1.05)), fill: '#f5efda' }, starG), ph: srnd(0, 6), sp: srnd(0.6, 2.4) }));
 const sunG = el('g', { style: 'cursor:grab' }, skyG);
 el('circle', { r: 70, fill: 'url(#af-sunglow)' }, sunG);
 el('circle', { r: 21, style: vfill('--sun'), stroke: 'currentColor', 'stroke-width': SP }, sunG);
@@ -121,10 +132,11 @@ const cloudD = (x: number, y: number, w: number) => {
   return `M${f(x)} ${f(y)} L${f(x + w)} ${f(y)} ${curl(x + w, y, 1)} M${f(x + w * 0.22)} ${f(y - 7)} L${f(x + w * 0.7)} ${f(y - 7)} ${curl(x + w * 0.7, y - 7, 1)} M${f(x + w * 0.4)} ${f(y + 6)} L${f(x + w * 0.9)} ${f(y + 6)} ${curl(x + w * 0.4, y + 6, -1)}`;
 };
 const cloudG = el('g', {}, skyG);
-const clouds = [[90, 70, 150], [480, 48, 190], [760, 96, 130], [300, 118, 100]].map(([x, y, w]) => ({ x, y, w, v: rnd(1.2, 2.6), n: pen(cloudG, SP * 0.75) }));
+const clouds = (PORTRAIT ? [[250, 70, 150], [40, 200, 150], [330, 290, 110], [130, 380, 90]] : [[90, 70, 150], [480, 48, 190], [760, 96, 130], [300, 118, 100]]).map(([x, y, w]) => ({ x, y, w, v: rnd(1.2, 2.6), n: pen(cloudG, SP * 0.75) }));
 
 // 먼 산: 겹겹이 능선, 가을빛 점묘
-const far = el('g', {}, skyG);
+const FY = PORTRAIT ? GY - 150 : 0;
+const far = el('g', { transform: `translate(${FX} ${FY})` }, skyG);
 const ridge = (pts: number[][], op: number, w: number) => { const n = pen(far, w); n.setAttribute('opacity', op); n.setAttribute('d', 'M' + pts.map((p, i) => (i ? `Q${f(p[0])} ${f(p[1])} ${f(p[2])} ${f(p[3])}` : `${f(p[0])} ${f(p[1])}`)).join(' ')); };
 ridge([[0, 196], [60, 168, 130, 176], [200, 150, 270, 170], [330, 186, 400, 164], [470, 138, 540, 160], [610, 180, 680, 150], [760, 126, 830, 156], [890, 176, 960, 162]], 0.28, SP * 0.7);
 ridge([[0, 248], [90, 214, 180, 226], [260, 238, 330, 214], [400, 192, 480, 216], [560, 240, 640, 222], [700, 206, 760, 214], [850, 228, 960, 210]], 0.45, SP * 0.8);
@@ -150,7 +162,7 @@ const pavilion = el('g', { opacity: 0.6 }, far);
   shape(pavilion, SP * 0.6).setAttribute('d', `M${x - 19} ${y - 12} Q${x - 12} ${y - 14} ${x - 7} ${y - 19} L${x} ${y - 23} L${x + 7} ${y - 19} Q${x + 12} ${y - 14} ${x + 19} ${y - 12} Q${x + 10} ${y - 15} ${x} ${y - 15} Q${x - 10} ${y - 15} ${x - 19} ${y - 12}Z`);
   pen(pavilion, SP * 0.5).setAttribute('d', `M${x} ${y - 23} l0 -3`);
 }
-const pavLight = el('circle', { cx: 712, cy: 227, r: 9, fill: 'url(#af-warm)', opacity: 0 }, glow);
+const pavLight = el('circle', { cx: 712 + FX, cy: 227 + FY, r: 9, fill: 'url(#af-warm)', opacity: 0 }, skyGlow);
 
 // 기러기 떼
 type Goose = { x: number; y: number; ph: number; n: SVGPathElement };
@@ -159,7 +171,7 @@ let nextFlock = 6;
 const flockG = el('g', {}, skyG);
 function launchFlock() {
   if (flock) return;
-  const dir = Math.random() < 0.5 ? -1 : 1, y0 = rnd(56, 120), n = 7 + ((Math.random() * 4) | 0);
+  const dir = Math.random() < 0.5 ? -1 : 1, y0 = PORTRAIT ? rnd(90, 320) : rnd(56, 120), n = 7 + ((Math.random() * 4) | 0);
   const x0 = dir < 0 ? W + 30 : -30;
   flock = { vx: dir * rnd(26, 34), geese: Array.from({ length: n }, (_, i) => {
     const k = Math.ceil(i / 2) * (i % 2 ? 1 : -1);
@@ -205,13 +217,13 @@ const ripples: { x: number; y: number; t: number; n: SVGPathElement }[] = [];
 const waterHit = el('rect', { x: 0, y: WATER, width: W, height: WATER_B - WATER, fill: 'transparent', style: 'cursor:pointer' }, L.water);
 el('title', {}, waterHit).textContent = '물을 눌러 보세요';
 waterHit.addEventListener('pointerdown', (e) => {
-  const p = toSvg(e as PointerEvent);
+  const p = toSvg(e as PointerEvent); p[1] -= GY;
   for (let i = 0; i < 3; i++) ripples.push({ x: p[0], y: p[1], t: -i * 0.35, n: pen(L.water, SP * 0.6) });
   for (const l of leaves) if (l.state === 'float') { const dx = l.x - p[0], dy = (l.y - p[1]) * 2, d = Math.hypot(dx, dy) || 1; if (d < 60) { l.vx += (dx / d) * 30; l.bob += 0.6; } }
 });
 // 가까운 둑 + 바위
-pen(L.near, SP * 0.5).setAttribute('d', (() => { let d = ''; for (let x = 2; x < W; x += srnd(6, 12)) { const y = srnd(WATER_B + 8, H - 2); const h = srnd(3, 7); d += `M${f(x)} ${f(y)} q${f(srnd(-1, 1))} ${f(-h * 0.6)} ${f(srnd(-2.5, 2.5))} ${f(-h)} `; } return d; })());
-for (const [x, y, r] of [[170, 464, 14], [610, 471, 18], [930, 460, 11], [22, 388, 9]]) {
+pen(L.near, SP * 0.5).setAttribute('d', (() => { let d = ''; for (let x = 2; x < W; x += srnd(6, 12)) { const y = srnd(WATER_B + 8, HB - 2); const h = srnd(3, 7); d += `M${f(x)} ${f(y)} q${f(srnd(-1, 1))} ${f(-h * 0.6)} ${f(srnd(-2.5, 2.5))} ${f(-h)} `; } return d; })());
+for (const [x, y, r] of (PORTRAIT ? [[90, 520, 22], [400, 560, 28], [500, 478, 13], [22, 388, 9]] : [[170, 464, 14], [610, 471, 18], [930, 460, 11], [22, 388, 9]])) {
   shape(L.near, SP).setAttribute('d', `M${x - r} ${y} Q${x - r * 1.05} ${y - r * 0.45} ${x - r * 0.55} ${y - r * 0.62} Q${x - r * 0.2} ${y - r * 0.95} ${x + r * 0.3} ${y - r * 0.7} Q${x + r * 0.95} ${y - r * 0.6} ${x + r * 1.05} ${y - r * 0.1} Q${x + r * 1.1} ${y + r * 0.12} ${x + r * 0.7} ${y + r * 0.16} L${x - r * 0.8} ${y + r * 0.14} Q${x - r * 1.1} ${y + r * 0.1} ${x - r} ${y}Z`);
   pen(L.near, SP * 0.45).setAttribute('d', `M${x - r * 0.5} ${y - r * 0.5} q${r * 0.25} ${r * 0.15} ${r * 0.3} ${r * 0.5} M${x + r * 0.35} ${y - r * 0.55} q-${r * 0.12} ${r * 0.25} 0 ${r * 0.5} M${x - r * 1.3} ${y + r * 0.16} l${r * 0.35} 0 M${x + r * 1.05} ${y + r * 0.18} l${r * 0.4} 0`);
 }
@@ -310,19 +322,19 @@ function shakeTree(t: Tree, k: number) {
 }
 
 // 뒷줄
-[[18, 'ginkgo'], [96, 'maple'], [190, 'ginkgo'], [262, 'maple'], [372, 'maple'], [452, 'ginkgo'], [540, 'maple'], [636, 'ginkgo'], [740, 'maple'], [836, 'ginkgo'], [920, 'maple']].forEach(([x, k], i) => makeTree(L.backTrees, (x as number) + srnd(-8, 8), HILL + srnd(-2, 2), k as Kind, srnd(0.56, 0.68), false, 100 + i * 13));
+(PORTRAIT ? [[14, 'maple'], [92, 'ginkgo'], [176, 'maple'], [250, 'ginkgo'], [356, 'maple'], [442, 'ginkgo'], [528, 'maple']] : [[18, 'ginkgo'], [96, 'maple'], [190, 'ginkgo'], [262, 'maple'], [372, 'maple'], [452, 'ginkgo'], [540, 'maple'], [636, 'ginkgo'], [740, 'maple'], [836, 'ginkgo'], [920, 'maple']]).forEach(([x, k], i) => makeTree(L.backTrees, (x as number) + srnd(-8, 8), HILL + srnd(-2, 2), k as Kind, srnd(0.56, 0.68) * (PORTRAIT ? 1.5 : 1), false, 100 + i * 13));
 // 앞줄
-[[60, 'ginkgo', 1.0], [178, 'maple', 0.92], [330, 'ginkgo', 1.08], [462, 'maple', 1.0], [612, 'ginkgo', 0.96], [748, 'maple', 1.06], [894, 'ginkgo', 1.02]].forEach(([x, k, s], i) => makeTree(L.frontTrees, x as number, BACK + 1, k as Kind, s as number, true, 7 + i * 31));
+(PORTRAIT ? [[34, 'ginkgo', 1.72], [168, 'maple', 1.5], [296, 'ginkgo', 1.86], [430, 'maple', 1.56], [528, 'ginkgo', 1.64]] : [[60, 'ginkgo', 1.0], [178, 'maple', 0.92], [330, 'ginkgo', 1.08], [462, 'maple', 1.0], [612, 'ginkgo', 0.96], [748, 'maple', 1.06], [894, 'ginkgo', 1.02]]).forEach(([x, k, s], i) => makeTree(L.frontTrees, x as number, BACK + 1, k as Kind, s as number, true, 7 + i * 31));
 
 // ------------------------------------------------------------------ 벤치와 가로등
 {
-  const bx = 500, by = BACK + 3;
+  const bx = PORTRAIT ? 226 : 500, by = BACK + 3;
   shape(L.props, SP).setAttribute('d', `M${bx - 26} ${by - 13} L${bx + 26} ${by - 13} L${bx + 27} ${by - 10.5} L${bx - 27} ${by - 10.5}Z`);
   shape(L.props, SP).setAttribute('d', `M${bx - 25} ${by - 26} L${bx + 25} ${by - 26} L${bx + 25} ${by - 22} L${bx - 25} ${by - 22}Z`);
   pen(L.props, SP * 0.5).setAttribute('d', `M${bx - 25} ${by - 18} L${bx + 25} ${by - 18} M${bx - 26} ${by - 12} l52 0`);
   pen(L.props, SP).setAttribute('d', `M${bx - 22} ${by - 26} L${bx - 22} ${by} M${bx + 22} ${by - 26} L${bx + 22} ${by} M${bx - 19} ${by - 10.5} L${bx - 20} ${by + 1} M${bx + 19} ${by - 10.5} L${bx + 20} ${by + 1}`);
 }
-const LAMP: Vec = [548, 262];
+const LAMP: Vec = [PORTRAIT ? 370 : 548, 262];
 {
   const [lx, ly] = LAMP;
   shape(L.props, SP).setAttribute('d', `M${lx - 1.6} ${BACK + 2} L${lx - 1.2} ${ly + 8} L${lx + 1.2} ${ly + 8} L${lx + 1.6} ${BACK + 2}Z`);
@@ -349,7 +361,7 @@ function makeReeds(parent: Element, x: number, y: number, n: number, hs: number)
   const r: Reed & { ink: SVGPathElement } = { x, y, stalks, sw: spring(14, 2.4), stem, plume, ink: plumeInk };
   reeds.push(r);
 }
-[[30, H - 6, 9, 1.1], [118, H - 4, 7, 1.0], [430, H - 3, 6, 0.9], [700, H - 4, 8, 1.15], [852, H - 6, 9, 1.05], [400, WATER - 3, 5, 0.75], [880, WATER - 2, 6, 0.8], [52, WATER - 2, 5, 0.7]].forEach(([x, y, n, hs]) => makeReeds(L.near, x, y, n, hs));
+(PORTRAIT ? [[34, HB - 8, 11, 1.9], [160, HB - 30, 9, 1.5], [250, HB - 4, 10, 2.1], [470, HB - 6, 12, 2.0], [520, HB - 70, 7, 1.4], [330, WATER_B + 40, 6, 1.1], [400, WATER - 3, 5, 0.8], [52, WATER - 2, 5, 0.75]] : [[30, H - 6, 9, 1.1], [118, H - 4, 7, 1.0], [430, H - 3, 6, 0.9], [700, H - 4, 8, 1.15], [852, H - 6, 9, 1.05], [400, WATER - 3, 5, 0.75], [880, WATER - 2, 6, 0.8], [52, WATER - 2, 5, 0.7]]).forEach(([x, y, n, hs]) => makeReeds(L.near, x, y, n, hs));
 
 // ------------------------------------------------------------------ 앞쪽 단풍 가지 (왼쪽 위 모서리)
 const branchG = el('g', { style: 'cursor:pointer' }, L.branch);
@@ -390,7 +402,7 @@ function landingY(fromY: number) {
   if (u < 0.5) return rnd(Math.max(BACK + 2, fromY + 30), FRONT - 1);
   if (u < 0.72) return rnd(FRONT + 2, WATER - 2);
   if (u < 0.94) return rnd(WATER + 4, WATER_B - 4);
-  return rnd(WATER_B + 6, H - 4);
+  return rnd(WATER_B + 6, HB - 4);
 }
 function addLeaf(kind: Kind, col: string, x: number, y: number, s: number, burst: boolean, ty?: number) {
   if (leaves.length > 620) return;
@@ -408,7 +420,7 @@ function spawnLeaf(t: Tree, burst = false) {
 }
 function spawnBranchLeaf(burst = false) {
   const c = pick(branchClusters);
-  addLeaf('maple', pick(MAPLE_COLS), c.x + rnd(-8, 8), c.y + rnd(-6, 6), rnd(3.6, 4.6), burst, Math.random() < 0.6 ? rnd(WATER + 4, WATER_B - 4) : rnd(WATER_B + 6, H - 4));
+  addLeaf('maple', pick(MAPLE_COLS), (c.x + rnd(-8, 8)) * BS, (c.y + rnd(-6, 6)) * BS - GY, rnd(3.6, 4.6) * BS, burst, Math.random() < 0.6 ? rnd(WATER + 4, WATER_B - 4) : rnd(WATER_B + 6, HB - 4));
 }
 const treeAngle = new Map<Tree, number>();
 function treePoint(t: Tree, x: number, y: number): Vec {
@@ -428,13 +440,13 @@ function setLeafTf(l: Leaf) {
 {
   const r = seeded(5);
   const front = trees.filter((t) => t.front);
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < (PORTRAIT ? 440 : 300); i++) {
     let x: number, y: number, kind: Kind;
     const u = r();
     if (u < 0.45) { const t = front[(r() * front.length) | 0]; x = t.x + r(-60, 60) * (t.kind === 'ginkgo' ? 1 : 1.2); y = r(BACK + 1, BACK + 16); kind = t.kind; if (r() < 0.25) kind = kind === 'ginkgo' ? 'maple' : 'ginkgo'; }
     else if (u < 0.7) { x = r(0, W); y = r(BACK + 2, FRONT - 1); kind = r() < 0.55 ? 'ginkgo' : 'maple'; }
     else if (u < 0.88) { x = r(0, W); y = r(FRONT + 2, WATER - 2); kind = r() < 0.5 ? 'ginkgo' : 'maple'; }
-    else { x = r(0, W); y = r(WATER_B + 4, H - 3); kind = r() < 0.35 ? 'ginkgo' : 'maple'; }
+    else { x = r(0, W); y = r(WATER_B + 4, HB - 3); kind = r() < 0.35 ? 'ginkgo' : 'maple'; }
     const col = kind === 'ginkgo' ? GINKGO_COLS[(r() * 3) | 0] : MAPLE_COLS[(r() * 4) | 0];
     const s = kind === 'ginkgo' ? r(2.5, 3.4) : r(2.7, 3.7);
     const l: Leaf = { n: leafNode(kind, col, s, L.restLeaves), kind, x, y, vx: 0, vy: 0, r: r(0, 360), spin: 0, ph: r(0, 6), fl: 0, s, state: 'rest', ty: y, life: r(0, 60), bob: 0 };
@@ -761,15 +773,16 @@ function spawnPerson(atX?: number) {
   else if (r < 0.72) makeAdult('grandpa', lanePick(), dir, x0);
   else makeKid(lanePick(), dir, x0);
 }
-makeAdult('coat', 357, 1, 250);
-makeAdult('grandpa', 365, -1, 700);
-makeKid(349, -1, 520);
+makeAdult('coat', 357, 1, PORTRAIT ? 120 : 250);
+makeAdult('grandpa', 365, -1, PORTRAIT ? 470 : 700);
+makeKid(349, -1, PORTRAIT ? 330 : 520);
 makeSquirrel();
-const magpies = [makeMagpie([395, 386]), makeMagpie([660, 392]), makeMagpie([150, 352])];
+const magpies = (PORTRAIT ? [[300, 388], [470, 394], [90, 352]] : [[395, 386], [660, 392], [150, 352]]).map((h) => makeMagpie(h as Vec));
 let nextPerson = 9;
 
 // ------------------------------------------------------------------ 시계 / 안내
 const clockEl = document.querySelector('#clock') as HTMLElement;
+if (QS.has('capture')) document.querySelector('#card')!.classList.add('capture');
 const hint = document.querySelector('#hint') as HTMLElement;
 svg.addEventListener('pointerdown', () => setTimeout(() => hint.classList.add('gone'), 2500), { once: true });
 const DAYPART = (h: number) => (h < 5 ? '깊은 밤' : h < 7 ? '새벽' : h < 11 ? '아침' : h < 13 ? '한낮' : h < 17 ? '오후' : h < 19 ? '해 질 녘' : h < 22 ? '저녁' : '밤');
@@ -782,8 +795,8 @@ moonG.addEventListener('pointerdown', (e) => { scrub = 'moon'; svg.setPointerCap
 svg.addEventListener('pointermove', (e) => {
   if (!scrub) return;
   const [x] = toSvg(e);
-  if (scrub === 'sun') tau = SUN_SPAN[0] + clamp((x - 40) / 880, 0.001, 0.999) * SUN_SPAN[1];
-  else tau = (MOON_SPAN[0] + clamp((x - 60) / 840, 0.001, 0.999) * MOON_SPAN[1]) % 1;
+  if (scrub === 'sun') tau = SUN_SPAN[0] + clamp((x - SX0) / SXW, 0.001, 0.999) * SUN_SPAN[1];
+  else tau = (MOON_SPAN[0] + clamp((x - MX0) / MXW, 0.001, 0.999) * MOON_SPAN[1]) % 1;
 });
 const endScrub = () => { scrub = null; svg.classList.remove('scrubbing'); };
 svg.addEventListener('pointerup', endScrub); svg.addEventListener('pointercancel', endScrub);
