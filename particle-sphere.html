@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Particle Sphere</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<!-- MediaPipe Hands (the only external script; no UI/3D frameworks) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #07080b;
+    --fg: #ece9e3;
+    --muted: #8a8c95;
+    --line: rgba(255, 255, 255, .12);
+    --panel: rgba(12, 13, 17, .45);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Webcam background */
+  #cam {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 0;
+    transition: opacity .6s ease;
+    pointer-events: none;
+  }
+  #shade {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(7,8,11,.15) 0%, rgba(7,8,11,.7) 100%);
+    opacity: 0;
+    transition: opacity .6s ease;
+    pointer-events: none;
+  }
+  body.bg-on #cam { opacity: .6; }
+  body.bg-on #shade { opacity: 1; }
+
+  #stage, #overlay { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* Title */
+  header { position: fixed; top: 28px; left: 32px; pointer-events: none; }
+  h1 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 400;
+    font-size: 40px;
+    line-height: 1;
+    letter-spacing: .005em;
+  }
+  h1 em { font-style: italic; color: var(--muted); }
+  .sub {
+    margin-top: 10px;
+    font-size: 10.5px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Status chips */
+  #status {
+    position: fixed; top: 30px; right: 32px;
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+    max-width: 60vw;
+  }
+  .chip {
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    white-space: nowrap;
+  }
+  .chip b { color: var(--fg); font-weight: 500; }
+  .dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: #555; margin-right: 7px; vertical-align: 1px;
+    transition: background .3s;
+  }
+  .dot.live { background: #7dffb0; box-shadow: 0 0 8px #7dffb0; }
+
+  /* Legend */
+  #legend {
+    position: fixed; left: 32px; bottom: 30px;
+    list-style: none;
+    display: grid; gap: 7px;
+    font-size: 12px; color: var(--muted);
+    pointer-events: none;
+  }
+  #legend li { display: flex; gap: 12px; align-items: baseline; transition: color .25s; }
+  #legend li span:first-child {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: italic; font-size: 15px; color: var(--fg); opacity: .5;
+    width: 18px;
+  }
+  #legend li.active { color: var(--fg); }
+  #legend li.active span:first-child { opacity: 1; }
+
+  /* Controls */
+  #controls { position: fixed; right: 32px; bottom: 30px; display: flex; gap: 8px; }
+  button {
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--fg);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 10px 16px;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: border-color .2s, background .2s;
+  }
+  button:hover { border-color: rgba(255,255,255,.35); }
+  button[aria-pressed="true"] { background: rgba(236,233,227,.92); color: #0a0a0c; border-color: transparent; }
+  button:disabled { opacity: .35; cursor: default; }
+
+  /* Intro overlay */
+  #intro {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    background: rgba(7, 8, 11, .72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity .5s ease;
+    z-index: 10;
+    padding: 16px;
+  }
+  #intro.hidden { opacity: 0; pointer-events: none; }
+  .card { max-width: 420px; text-align: center; }
+  .card h2 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 400; font-size: 34px; line-height: 1.1;
+  }
+  .card h2 em { color: var(--muted); }
+  .card p { margin: 14px 0 26px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+  .card .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .card .primary { background: var(--fg); color: #0a0a0c; border-color: transparent; }
+  .card small { display: block; margin-top: 18px; color: #5d5f67; font-size: 11px; }
+  #err { color: #ff9a8a; min-height: 1em; margin-top: 14px; font-size: 12px; }
+
+  @media (max-width: 640px) {
+    header { top: 18px; left: 16px; }
+    h1 { font-size: 30px; }
+    #status { top: 20px; right: 16px; max-width: 46vw; }
+    #legend { left: 16px; bottom: 74px; font-size: 11px; }
+    #controls { right: 16px; bottom: 18px; left: 16px; justify-content: flex-end; }
+  }
+</style>
+</head>
+<body>
+  <video id="cam" playsinline muted></video>
+  <div id="shade"></div>
+  <canvas id="stage"></canvas>
+  <canvas id="overlay"></canvas>
+
+  <header>
+    <h1>Particle <em>Sphere</em></h1>
+    <div class="sub">3,000 points · hand-tracked</div>
+  </header>
+
+  <div id="status">
+    <div class="chip"><span class="dot" id="liveDot"></span><b id="sMode">Idle</b></div>
+    <div class="chip">Hands <b id="sHands">0</b></div>
+    <div class="chip">Fingers <b id="sFingers">–</b></div>
+  </div>
+
+  <ul id="legend">
+    <li data-g="move"><span>i</span><span>One hand — move &amp; rotate</span></li>
+    <li data-g="pinch"><span>ii</span><span>Pinch &amp; hold — charge, release to burst</span></li>
+    <li data-g="scale"><span>iii</span><span>Two hands — spread to grow, close to shrink</span></li>
+    <li data-g="color"><span>iv</span><span>Finger count — changes color</span></li>
+  </ul>
+
+  <div id="controls">
+    <button id="bgBtn" aria-pressed="false" disabled>Camera background</button>
+  </div>
+
+  <div id="intro">
+    <div class="card">
+      <h2>Shape light<br><em>with your hands</em></h2>
+      <p>Allow webcam access to control a sphere of 3,000 particles. Hand tracking runs entirely in your browser — no video leaves your device.</p>
+      <div class="row">
+        <button class="primary" id="startBtn">Enable camera</button>
+        <button id="mouseBtn">Use mouse instead</button>
+      </div>
+      <div id="err"></div>
+      <small>Mouse mode: move · hold click to charge · scroll to scale · keys 0–9 for color</small>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ───────────────────────── Config ─────────────────────────
+  const N = 3000;
+  const PALETTES = [ // indexed by finger count (0–10)
+    ['#f4f4f6', '#7d8299'], // 0  fist   — silver
+    ['#ff6b6b', '#ffd166'], // 1  ember
+    ['#4cc9f0', '#4361ee'], // 2  ocean
+    ['#80ffdb', '#5390d9'], // 3  aqua
+    ['#c77dff', '#ff7aa2'], // 4  orchid
+    ['#ffe08a', '#f3722c'], // 5  gold
+    ['#06d6a0', '#118ab2'], // 6  lagoon
+    ['#ff99c8', '#a9def9'], // 7  candy
+    ['#e0aaff', '#7b2cbf'], // 8  amethyst
+    ['#caffbf', '#3a86ff'], // 9  spring
+    ['#ffffff', '#ffb38a'], // 10 dawn
+  ];
+  const HAND_LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+                      [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+  // ───────────────────────── DOM ─────────────────────────
+  const $ = id => document.getElementById(id);
+  const canvas = $('stage'), ctx = canvas.getContext('2d');
+  const ocv = $('overlay'), octx = ocv.getContext('2d');
+  const video = $('cam');
+  const ui = { mode: $('sMode'), hands: $('sHands'), fingers: $('sFingers'), dot: $('liveDot'),
+               bg: $('bgBtn'), intro: $('intro'), err: $('err'),
+               legend: [...document.querySelectorAll('#legend li')] };
+
+  let W = 0, H = 0, DPR = 1, FOCAL = 900;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ocv.width = canvas.width; ocv.height = canvas.height;
+    octx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    FOCAL = Math.max(W, H) * 0.95;
+    S.baseR = Math.min(W, H) * 0.22;
+  }
+
+  // ───────────────────────── Particles ─────────────────────────
+  const hx = new Float32Array(N), hy = new Float32Array(N), hz = new Float32Array(N);
+  const ox = new Float32Array(N), oy = new Float32Array(N);   // screen-space burst offset
+  const vx = new Float32Array(N), vy = new Float32Array(N);
+  const px = new Float32Array(N), py = new Float32Array(N);   // last projected position
+  const seed = new Float32Array(N), band = new Uint8Array(N);
+  const GOLD = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {           // Fibonacci sphere: even distribution
+    const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), th = i * GOLD;
+    hx[i] = Math.cos(th) * r; hy[i] = y; hz[i] = Math.sin(th) * r;
+    seed[i] = Math.random();
+    band[i] = y < -0.33 ? 0 : y < 0.33 ? 1 : 2;
+  }
+
+  // ───────────────────────── State ─────────────────────────
+  const S = {
+    cx: innerWidth / 2, cy: innerHeight / 2, tcx: innerWidth / 2, tcy: innerHeight / 2,
+    R: 0, tR: 0, baseR: 200, scaled: false,
+    rx: -0.35, ry: 0, vrx: 0, vry: 0,
+    charge: 0, pinching: false, pinchPt: null,
+    burstT: 99, burstDelay: 1, flash: 0,
+    mode: 'idle', lastSeen: 0, prevPalm: null,
+    col1: hexRgb(PALETTES[3][0]), col2: hexRgb(PALETTES[3][1]), palette: 3,
+    fingerCand: -1, fingerSince: 0, fingers: null,
+  };
+  const waves = [];
+  let input = { hands: [], t: 0 };          // latest tracked hands (screen space)
+  let source = 'none';                      // 'camera' | 'mouse' | 'none'
+  let camReady = false;
+
+  // ───────────────────────── Color sprites ─────────────────────────
+  function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  const mixRgb = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const SPR = 64;
+  const sprites = [0, 1, 2].map(() => { const c = document.createElement('canvas'); c.width = c.height = SPR; return c; });
+  function paintSprite(cv, rgb) {
+    const g = cv.getContext('2d'), h = SPR / 2;
+    g.clearRect(0, 0, SPR, SPR);
+    const core = mixRgb(rgb, [255, 255, 255], 0.55).map(Math.round), c = rgb.map(Math.round);
+    const grad = g.createRadialGradient(h, h, 0, h, h, h);
+    grad.addColorStop(0, `rgba(${core},1)`);
+    grad.addColorStop(0.18, `rgba(${c},.9)`);
+    grad.addColorStop(0.45, `rgba(${c},.22)`);
+    grad.addColorStop(1, `rgba(${c},0)`);
+    g.fillStyle = grad; g.fillRect(0, 0, SPR, SPR);
+  }
+  function paintSprites() {
+    paintSprite(sprites[0], S.col2);
+    paintSprite(sprites[1], mixRgb(S.col1, S.col2, 0.5));
+    paintSprite(sprites[2], S.col1);
+  }
+
+  // ───────────────────────── Hand analysis ─────────────────────────
+  const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function toScreen(lm) {                  // map normalized landmark → mirrored, object-fit:cover screen
+    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+    const sc = Math.max(W / vw, H / vh), dw = vw * sc, dh = vh * sc;
+    return { x: (1 - lm.x) * dw + (W - dw) / 2, y: lm.y * dh + (H - dh) / 2 };
+  }
+
+  function analyzeHand(lms) {
+    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+    const p = lms.map(l => ({ x: l.x * vw, y: l.y * vh }));        // aspect-correct pixel space
+    const size = d2(p[0], p[9]) || 1;
+    let fingers = 0;
+    for (const [tip, pip] of [[8, 6], [12, 10], [16, 14], [20, 18]])
+      if (d2(p[tip], p[0]) > d2(p[pip], p[0]) * 1.12) fingers++;
+    if (d2(p[4], p[17]) > d2(p[3], p[17]) * 1.06 && d2(p[4], p[5]) > size * 0.42) fingers++;
+    const pinchRatio = d2(p[4], p[8]) / size;
+    const scr = lms.map(toScreen);
+    const palm = [0, 5, 9, 13, 17].reduce((a, i) => ({ x: a.x + scr[i].x / 5, y: a.y + scr[i].y / 5 }), { x: 0, y: 0 });
+    const pinchPt = { x: (scr[4].x + scr[8].x) / 2, y: (scr[4].y + scr[8].y) / 2 };
+    return { scr, palm, fingers, pinchRatio, pinchPt };
+  }
+
+  function onResults(res) {
+    const list = res.multiHandLandmarks || [];
+    input = { hands: list.map(analyzeHand), t: performance.now() };
+  }
+
+  // ───────────────────────── Gestures → state ─────────────────────────
+  function explode(power) {
+    for (let i = 0; i < N; i++) {
+      let dx = px[i] - S.cx, dy = py[i] - S.cy;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+      const a = (Math.random() - 0.5) * 0.9, ca = Math.cos(a), sa = Math.sin(a);
+      const speed = (500 + Math.random() * 1700) * (0.45 + power * 1.1);
+      vx[i] = (dx * ca - dy * sa) * speed;
+      vy[i] = (dx * sa + dy * ca) * speed;
+    }
+    S.burstT = 0;
+    S.burstDelay = 0.7 + power * 0.7;
+    S.flash = 1;
+    waves.push({ x: S.cx, y: S.cy, r: S.R, a: 0.9 }, { x: S.cx, y: S.cy, r: S.R * 0.6, a: 0.5, slow: true });
+  }
+
+  function setFingerCount(n, now) {
+    if (n !== S.fingerCand) { S.fingerCand = n; S.fingerSince = now; return; }
+    if (now - S.fingerSince > 220 && S.fingers !== n) {
+      S.fingers = n;
+      setPalette(Math.min(10, n));
+    }
+  }
+  function setPalette(i) { S.palette = i; ui.fingers.textContent = i; }
+
+  function updateInput(dt, now) {
+    const fresh = now - input.t < 350;
+    const hands = fresh ? input.hands : [];
+    let mode = 'idle';
+
+    if (hands.length >= 2) {
+      mode = 'scale';
+      const [a, b] = hands;
+      S.tcx = (a.palm.x + b.palm.x) / 2;
+      S.tcy = (a.palm.y + b.palm.y) / 2;
+      S.tR = Math.max(40, Math.min(Math.min(W, H) * 0.65, d2(a.palm, b.palm) * 0.42));
+      S.scaled = true;
+      S.pinching = false;
+      S.prevPalm = null;
+      setFingerCount(a.fingers + b.fingers, now);
+      S.lastSeen = now;
+    } else if (hands.length === 1) {
+      const h = hands[0];
+      mode = 'move';
+      S.tcx = h.palm.x; S.tcy = h.palm.y;
+      if (S.prevPalm) {                     // hand velocity → spin
+        const dx = (h.palm.x - S.prevPalm.x) / W, dy = (h.palm.y - S.prevPalm.y) / H;
+        S.vry -= dx * 16; S.vrx += dy * 16;
+      }
+      S.prevPalm = h.palm;
+      // pinch with hysteresis
+      const pinchNow = S.pinching ? h.pinchRatio < 0.45 : h.pinchRatio < 0.28;
+      if (pinchNow) {
+        S.pinching = true; mode = 'pinch';
+        S.pinchPt = h.pinchPt;
+        S.charge = Math.min(1, S.charge + dt / 1.5);
+      } else {
+        if (S.pinching && S.charge > 0.12) explode(S.charge);
+        if (S.pinching) S.charge = 0;
+        S.pinching = false;
+        setFingerCount(h.fingers, now);
+      }
+      S.lastSeen = now;
+    } else {
+      S.prevPalm = null;
+      if (source !== 'mouse') S.pinching = false;
+      if (now - S.lastSeen > 1500 && source !== 'mouse') { S.tcx = W / 2; S.tcy = H / 2; }
+    }
+
+    // mouse fallback
+    if (source === 'mouse' && mouse.has) {
+      S.tcx = mouse.x; S.tcy = mouse.y;
+      if (mouse.prev) { S.vry -= (mouse.x - mouse.prev.x) / W * 12; S.vrx += (mouse.y - mouse.prev.y) / H * 12; }
+      mouse.prev = { x: mouse.x, y: mouse.y };
+      mode = 'move';
+      if (mouse.down) { S.pinching = true; mode = 'pinch'; S.pinchPt = { x: mouse.x, y: mouse.y }; S.charge = Math.min(1, S.charge + dt / 1.5); }
+      else if (S.pinching) { if (S.charge > 0.12) explode(S.charge); S.charge = 0; S.pinching = false; }
+    }
+
+    if (!S.pinching) S.charge = Math.max(0, S.charge - dt * 2);
+    S.mode = mode;
+    ui.hands.textContent = source === 'mouse' ? '–' : hands.length;
+    ui.mode.textContent = { idle: source === 'none' ? 'Idle' : 'Waiting', move: 'Move', pinch: 'Charging', scale: 'Scale' }[mode];
+    ui.dot.classList.toggle('live', hands.length > 0 || source === 'mouse');
+    for (const li of ui.legend) li.classList.toggle('active', li.dataset.g === mode);
+  }
+
+  // ───────────────────────── Render loop ─────────────────────────
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const t = now / 1000;
+    updateInput(dt, now);
+
+    // smooth follow
+    const k = 1 - Math.exp(-dt * 9);
+    S.cx += (S.tcx - S.cx) * k; S.cy += (S.tcy - S.cy) * k;
+    if (!S.scaled) S.tR = S.baseR;
+    S.R += ((S.tR || S.baseR) - S.R) * (1 - Math.exp(-dt * 7));
+
+    // rotation: idle drift + damped spin
+    S.vry += (0.22 - S.vry) * (1 - Math.exp(-dt * 0.8));
+    S.vrx += (0 - S.vrx) * (1 - Math.exp(-dt * 1.5));
+    S.vry = Math.max(-12, Math.min(12, S.vry)); S.vrx = Math.max(-12, Math.min(12, S.vrx));
+    S.ry += S.vry * dt; S.rx += S.vrx * dt;
+    S.rx += (-0.35 - S.rx) * dt * 0.15;
+
+    // color easing
+    const tgt1 = hexRgb(PALETTES[S.palette][0]), tgt2 = hexRgb(PALETTES[S.palette][1]);
+    const ck = 1 - Math.exp(-dt * 5);
+    let delta = 0;
+    for (let c = 0; c < 3; c++) {
+      const d1 = (tgt1[c] - S.col1[c]) * ck, d2_ = (tgt2[c] - S.col2[c]) * ck;
+      S.col1[c] += d1; S.col2[c] += d2_; delta += Math.abs(d1) + Math.abs(d2_);
+    }
+    if (delta > 0.05 || !sprites.painted) { paintSprites(); sprites.painted = true; }
+
+    // fade previous frame (keeps canvas transparent for webcam bg → soft trails)
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // particles
+    S.burstT += dt;
+    const cy_ = Math.cos(S.ry), sy_ = Math.sin(S.ry), cx_ = Math.cos(S.rx), sx_ = Math.sin(S.rx);
+    const squeeze = 1 - S.charge * 0.2, jitter = S.charge * S.charge * 3.5;
+    const R = S.R * squeeze, baseSize = Math.max(1.2, Math.min(2.6, S.R / 110));
+    const drag = Math.exp(-dt * 1.6);
+    for (let i = 0; i < N; i++) {
+      const breathe = 1 + 0.035 * Math.sin(t * 1.4 + seed[i] * 6.283);
+      let x = hx[i] * R * breathe, y = hy[i] * R * breathe, z = hz[i] * R * breathe;
+      const x1 = x * cy_ + z * sy_, z1 = -x * sy_ + z * cy_;
+      const y2 = y * cx_ - z1 * sx_, z2 = y * sx_ + z1 * cx_;
+      const p = FOCAL / (FOCAL + z2);
+
+      // burst physics: free flight, then staggered spring back home
+      if (S.burstT < S.burstDelay + seed[i] * 0.7) {
+        vx[i] *= drag; vy[i] *= drag;
+        vx[i] += Math.sin(t * 2 + seed[i] * 40) * 30 * dt;
+        vy[i] += Math.cos(t * 2.3 + seed[i] * 31) * 30 * dt;
+      } else {
+        vx[i] += (-ox[i] * 11 - vx[i] * 4.2) * dt;
+        vy[i] += (-oy[i] * 11 - vy[i] * 4.2) * dt;
+      }
+      ox[i] += vx[i] * dt; oy[i] += vy[i] * dt;
+
+      let sx = S.cx + x1 * p + ox[i], sy = S.cy + y2 * p + oy[i];
+      if (jitter) { sx += (Math.random() - 0.5) * jitter; sy += (Math.random() - 0.5) * jitter; }
+      px[i] = sx; py[i] = sy;
+
+      const depth = (z2 / (R || 1) + 1) * 0.5;        // 0 = front, 1 = back
+      const s = baseSize * p * (1.9 - depth * 0.9) * 1.75;
+      ctx.globalAlpha = 0.14 + (1 - depth) * 0.62;
+      ctx.drawImage(sprites[band[i]], sx - s, sy - s, s * 2, s * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+
+    drawOverlays(dt, t);
+    requestAnimationFrame(frame);
+  }
+
+  function rgba(rgb, a) { return `rgba(${rgb.map(Math.round)},${a})`; }
+
+  function drawOverlays(dt, t) {
+    octx.clearRect(0, 0, W, H);
+    // shockwaves
+    for (let i = waves.length - 1; i >= 0; i--) {
+      const w = waves[i];
+      w.r += (w.slow ? 520 : 1300) * dt; w.a -= dt * (w.slow ? 0.7 : 1.1);
+      if (w.a <= 0) { waves.splice(i, 1); continue; }
+      octx.beginPath(); octx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+      octx.strokeStyle = rgba(S.col1, w.a * 0.6); octx.lineWidth = 1.5; octx.stroke();
+    }
+    if (S.flash > 0) {
+      const g = octx.createRadialGradient(S.cx, S.cy, 0, S.cx, S.cy, S.R * 2.2);
+      g.addColorStop(0, rgba(S.col1, 0.35 * S.flash)); g.addColorStop(1, rgba(S.col1, 0));
+      octx.fillStyle = g; octx.fillRect(0, 0, W, H);
+      S.flash = Math.max(0, S.flash - dt * 3);
+    }
+
+    // charge ring
+    if (S.charge > 0.005) {
+      const r = S.R * 1.3 + 8, full = S.charge >= 1;
+      const pulse = full ? 0.5 + 0.5 * Math.sin(t * 14) : 0;
+      octx.lineCap = 'round';
+      octx.beginPath(); octx.arc(S.cx, S.cy, r, 0, Math.PI * 2);
+      octx.strokeStyle = 'rgba(255,255,255,0.1)'; octx.lineWidth = 2; octx.stroke();
+      octx.beginPath(); octx.arc(S.cx, S.cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * S.charge);
+      octx.strokeStyle = rgba(mixRgb(S.col1, [255, 255, 255], 0.3 + pulse * 0.5), 0.95);
+      octx.lineWidth = 2.5 + pulse * 2; octx.stroke();
+      // ticks
+      for (let i = 0; i < 60; i++) {
+        const a = -Math.PI / 2 + i / 60 * Math.PI * 2, on = i / 60 < S.charge;
+        const r1 = r + 7, r2 = r + (i % 5 === 0 ? 14 : 10);
+        octx.beginPath();
+        octx.moveTo(S.cx + Math.cos(a) * r1, S.cy + Math.sin(a) * r1);
+        octx.lineTo(S.cx + Math.cos(a) * r2, S.cy + Math.sin(a) * r2);
+        octx.strokeStyle = on ? rgba(S.col1, 0.8) : 'rgba(255,255,255,0.08)';
+        octx.lineWidth = 1; octx.stroke();
+      }
+      octx.font = '500 10px Inter, sans-serif'; octx.textAlign = 'center';
+      octx.fillStyle = 'rgba(236,233,227,0.75)';
+      octx.fillText(full ? 'RELEASE' : Math.round(S.charge * 100) + '%', S.cx, S.cy + r + 30);
+      if (S.pinchPt) {
+        octx.beginPath(); octx.arc(S.pinchPt.x, S.pinchPt.y, 14 - S.charge * 6, 0, Math.PI * 2);
+        octx.strokeStyle = rgba(S.col1, 0.8); octx.lineWidth = 1.5; octx.stroke();
+      }
+    }
+
+    // hand skeletons
+    if (source === 'camera' && performance.now() - input.t < 350) {
+      octx.lineWidth = 1;
+      for (const h of input.hands) {
+        octx.strokeStyle = 'rgba(255,255,255,0.22)';
+        octx.beginPath();
+        for (const [a, b] of HAND_LINKS) { octx.moveTo(h.scr[a].x, h.scr[a].y); octx.lineTo(h.scr[b].x, h.scr[b].y); }
+        octx.stroke();
+        octx.fillStyle = 'rgba(255,255,255,0.6)';
+        for (const p of h.scr) { octx.beginPath(); octx.arc(p.x, p.y, 2, 0, Math.PI * 2); octx.fill(); }
+      }
+      if (input.hands.length >= 2) {           // scale guide line
+        const [a, b] = input.hands;
+        octx.setLineDash([3, 6]);
+        octx.strokeStyle = rgba(S.col1, 0.45);
+        octx.beginPath(); octx.moveTo(a.palm.x, a.palm.y); octx.lineTo(b.palm.x, b.palm.y); octx.stroke();
+        octx.setLineDash([]);
+      }
+    }
+  }
+
+  // ───────────────────────── Camera + MediaPipe ─────────────────────────
+  let hands = null, busy = false;
+  async function startCamera() {
+    ui.err.textContent = '';
+    const btn = $('startBtn');
+    btn.disabled = true; btn.textContent = 'Starting…';
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Webcam API unavailable (open over https or localhost).');
+      if (typeof Hands === 'undefined') throw new Error('MediaPipe Hands failed to load — check your connection.');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      video.srcObject = stream;
+      await video.play();
+      btn.textContent = 'Loading hand model…';
+      hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
+      hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+      hands.onResults(onResults);
+      await hands.initialize();
+      source = 'camera'; camReady = true;
+      ui.bg.disabled = false;
+      ui.intro.classList.add('hidden');
+      detectLoop();
+    } catch (e) {
+      console.error(e);
+      ui.err.textContent = e.name === 'NotAllowedError' ? 'Camera permission was denied.' : (e.message || String(e));
+      btn.disabled = false; btn.textContent = 'Try again';
+    }
+  }
+  async function detectLoop() {
+    if (!busy && video.readyState >= 2) {
+      busy = true;
+      try { await hands.send({ image: video }); } catch (e) { console.warn(e); }
+      busy = false;
+    }
+    requestAnimationFrame(detectLoop);
+  }
+
+  function toggleBg(force) {
+    if (!camReady) return;
+    const on = typeof force === 'boolean' ? force : !document.body.classList.contains('bg-on');
+    document.body.classList.toggle('bg-on', on);
+    ui.bg.setAttribute('aria-pressed', on);
+  }
+
+  // ───────────────────────── Mouse fallback ─────────────────────────
+  const mouse = { x: 0, y: 0, has: false, down: false, prev: null };
+  function startMouse() {
+    source = 'mouse';
+    ui.intro.classList.add('hidden');
+    ui.fingers.textContent = S.palette;
+  }
+  addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true; });
+  addEventListener('pointerdown', e => { if (source === 'mouse' && !e.target.closest('button')) mouse.down = true; });
+  addEventListener('pointerup', () => { mouse.down = false; });
+  addEventListener('wheel', e => {
+    if (source !== 'mouse') return;
+    S.scaled = true;
+    S.tR = Math.max(40, Math.min(Math.min(W, H) * 0.65, (S.tR || S.baseR) * Math.exp(-e.deltaY * 0.0015)));
+  }, { passive: true });
+  addEventListener('keydown', e => {
+    if (e.key >= '0' && e.key <= '9') setPalette(+e.key);
+    if (e.key === 'b' || e.key === 'B') toggleBg();
+    if (e.key === ' ' && source === 'mouse') explode(0.8);
+  });
+
+  $('startBtn').addEventListener('click', startCamera);
+  $('mouseBtn').addEventListener('click', startMouse);
+  ui.bg.addEventListener('click', () => toggleBg());
+  addEventListener('resize', resize);
+
+  resize();
+  S.R = S.tR = S.baseR;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
